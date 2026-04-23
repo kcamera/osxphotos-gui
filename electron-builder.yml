@@ -1,0 +1,10 @@
+appId: com.kcamera.osxphotos-backup
+productName: OSXPhotos Backup
+mac:
+  category: public.app-category.utilities
+  target: dmg
+extraResources:
+  - from: src/resources/
+    to: .
+    filter:
+      - "*.py"
