@@ -70,7 +70,7 @@ export class OsxphotosService {
   }
 
   async runExport(settings, onLine) {
-    const { osxphotosPath, destinationPath, photosLibraryPath, downloadMissing, fromDate } = settings
+    const { osxphotosPath, destinationPath, photosLibraryPath, fromDate } = settings
 
     // Capture start time for log filename and header
     const startTime = Date.now()
@@ -95,7 +95,7 @@ export class OsxphotosService {
       '--verbose',
     ]
     if (fromDate) args.push('--from-date', fromDate)
-    if (downloadMissing) args.push('--download-missing', '--retry', '3')
+    args.push('--download-missing', '--retry', '3')
 
     this._cancelled = false
 

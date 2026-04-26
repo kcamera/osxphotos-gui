@@ -7,7 +7,6 @@ const DEFAULTS = {
   osxphotosPath: '',
   pythonPath: '',
   photosLibraryPath: '',
-  downloadMissing: false,
   fromDatePreset: 'all',   // 'all' | '1yr' | '2yr' | '5yr' | 'custom'
   fromDateCustom: '',       // YYYY-MM-DD when preset is 'custom'
 }

@@ -139,19 +139,6 @@ export default function SettingsView({ onClose }) {
           </div>
         )}
 
-        {/* Download missing toggle */}
-        <div className="toggle-row">
-          <div>
-            <div className="toggle-label">Download Missing from iCloud</div>
-            <div className="toggle-desc">Force-download iCloud-only originals before export (required for Optimize Mac Storage mode)</div>
-          </div>
-          <label className="toggle-switch">
-            <input type="checkbox" checked={form.downloadMissing} onChange={(e) => setForm((f) => ({ ...f, downloadMissing: e.target.checked }))} />
-            <span className="toggle-track" />
-            <span className="toggle-thumb" />
-          </label>
-        </div>
-
         <button className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? 'Saving…' : 'Save Settings'}
         </button>

@@ -52,7 +52,6 @@ def main():
         # Pending items: either all (first run) or added since last backup
         non_shared = all_photos + all_videos
         added_since = 0
-        pending_size_bytes = 0
         since_dt = None
 
         if args.since:
@@ -66,14 +65,15 @@ def main():
                 pending = [p for p in non_shared
                            if p.date_added and p.date_added.replace(tzinfo=timezone.utc) > since_dt]
             added_since = len(pending)
-            pending_size_bytes = sum(p.original_filesize or 0 for p in pending)
         else:
             # First run — everything in range is pending
-            pending_size_bytes = sum(p.original_filesize or 0 for p in non_shared)
+            pending = non_shared
 
-        # iCloud status — single pass over already-loaded non-shared assets
-        missing_count = sum(1 for p in non_shared if p.ismissing)
-        cloud_asset_count = sum(1 for p in non_shared if p.iscloudasset)
+        pending_size_bytes = sum(p.original_filesize or 0 for p in pending)
+
+        # iCloud downloads — only count items that are BOTH pending AND not on local disk.
+        # These are the items osxphotos will actually fetch from iCloud during the next backup.
+        pending_missing_count = sum(1 for p in pending if p.ismissing)
 
         result = {
             'success': True,
@@ -81,8 +81,7 @@ def main():
             'total_videos': len(all_videos),
             'photos_added_since_date': added_since if args.since else None,
             'pending_size_bytes': pending_size_bytes,
-            'missing_count': missing_count,
-            'cloud_asset_count': cloud_asset_count,
+            'pending_missing_count': pending_missing_count,
             'query_timestamp': datetime.now(timezone.utc).isoformat(),
             'library_path': str(db.library_path),
             'photos_version': str(db.photos_version),
