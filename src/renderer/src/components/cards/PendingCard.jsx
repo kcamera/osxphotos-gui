@@ -36,7 +36,7 @@ export default function PendingCard({ backupState, libraryStatus, isRefreshing }
       const since = backupState?.lastBackupDate
         ? new Date(backupState.lastBackupDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : ''
-      label = since ? `since ${since}` : ''
+      label = since ? `since last backup on ${since}` : ''
     }
     sizeLabel = formatBytes(libraryStatus.pending_size_bytes)
   }
@@ -44,7 +44,7 @@ export default function PendingCard({ backupState, libraryStatus, isRefreshing }
   const color = count == null ? 'gray' : dotColor(count, isFirstRun || isFreshDestination)
 
   return (
-    <CardFrame title="Pending" dotColor={color}>
+    <CardFrame title="New Items" dotColor={color}>
       <div className={`card-value ${count == null ? 'loading' : ''}`}>
         {count == null ? '—' : count.toLocaleString() + (count === 1 ? ' item' : ' items')}
         {isRefreshing && <span style={{ marginLeft: 8 }}><span className="spinner" /></span>}
