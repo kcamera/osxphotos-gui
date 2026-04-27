@@ -71,9 +71,9 @@ def main():
 
         pending_size_bytes = sum(p.original_filesize or 0 for p in pending)
 
-        # iCloud downloads — only count items that are BOTH pending AND not on local disk.
-        # These are the items osxphotos will actually fetch from iCloud during the next backup.
-        pending_missing_count = sum(1 for p in pending if p.ismissing)
+        # iCloud downloads — total library items not on local disk (will be fetched during backup).
+        # Also track the pending-only subset for potential future use.
+        missing_count = sum(1 for p in non_shared if p.ismissing)
 
         result = {
             'success': True,
@@ -81,7 +81,7 @@ def main():
             'total_videos': len(all_videos),
             'photos_added_since_date': added_since if args.since else None,
             'pending_size_bytes': pending_size_bytes,
-            'pending_missing_count': pending_missing_count,
+            'missing_count': missing_count,
             'query_timestamp': datetime.now(timezone.utc).isoformat(),
             'library_path': str(db.library_path),
             'photos_version': str(db.photos_version),

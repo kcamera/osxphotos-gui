@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { settingsStore } from './services/settingsStore.js'
 import { backupStateStore } from './services/backupStateStore.js'
 import { LibraryStatusService } from './services/libraryStatusService.js'
@@ -36,7 +37,6 @@ function createWindow() {
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -76,6 +76,25 @@ app.on('second-instance', () => {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+function dbSize(destinationPath) {
+  if (!destinationPath) return 0
+  try { return statSync(join(destinationPath, '.osxphotos_export.db')).size } catch { return 0 }
+}
+
+function readExportedCount(destinationPath) {
+  if (!destinationPath || dbSize(destinationPath) === 0) return null
+  const dbPath = join(destinationPath, '.osxphotos_export.db')
+  try {
+    const out = execFileSync(
+      '/usr/bin/sqlite3',
+      [dbPath, 'SELECT COUNT(DISTINCT uuid) FROM export_data WHERE uuid IS NOT NULL'],
+      { timeout: 5000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim()
+    const n = parseInt(out, 10)
+    return isNaN(n) ? null : n
+  } catch { return null }
+}
+
 function computeFromDate(preset, custom) {
   if (!preset || preset === 'all') return null
   if (preset === 'custom') return custom || null
@@ -89,11 +108,13 @@ function computeFromDate(preset, custom) {
 // ── IPC Handlers ────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-status', () => {
+  const settings = settingsStore.load()
   return {
-    settings: settingsStore.load(),
+    settings,
     backupState: backupStateStore.load(),
     destStatus: destinationMonitor.getStatus(),
     libraryStatus: LibraryStatusService.loadCache(),
+    exportedCount: readExportedCount(settings.destinationPath),
   }
 })
 
@@ -106,8 +127,7 @@ ipcMain.handle('refresh', async () => {
   if (settings.pythonPath && settings.photosLibraryPath) {
     // Only use lastBackupDate as sinceDate if the destination has an existing export DB.
     // A fresh/changed destination has no DB → treat all items as pending.
-    const hasExportDb = settings.destinationPath &&
-      existsSync(join(settings.destinationPath, '.osxphotos_export.db'))
+    const hasExportDb = dbSize(settings.destinationPath) > 0
     const sinceDate = hasExportDb ? backupState.lastBackupDate : null
     LibraryStatusService.query(settings, sinceDate, fromDate)
       .then((status) => mainWindow?.webContents.send('library-status-updated', status))
@@ -150,55 +170,61 @@ ipcMain.handle('test-access', async (_, overridePaths) => {
 })
 
 ipcMain.handle('check-export-db', (_, destinationPath) => {
-  return existsSync(join(destinationPath, '.osxphotos_export.db'))
+  return dbSize(destinationPath) > 0
 })
 
-ipcMain.handle('start-backup', async () => {
+ipcMain.handle('start-backup', async (_, opts = {}) => {
+  const { dryRun = false } = opts
   const settings = settingsStore.load()
   const state = backupStateStore.load()
   const fromDate = computeFromDate(settings.fromDatePreset, settings.fromDateCustom)
 
-  // Mark running immediately so a crash is detected on next launch
-  backupStateStore.save({ ...state, outcome: 'running' })
+  // Mark running immediately so a crash is detected on next launch (real backups only)
+  if (!dryRun) backupStateStore.save({ ...state, outcome: 'running' })
 
   try {
-    const summary = await osxphotosService.runExport({ ...settings, fromDate }, (lines) => {
+    const summary = await osxphotosService.runExport({ ...settings, fromDate, dryRun }, (lines) => {
       mainWindow?.webContents.send('backup-log', lines)
     })
 
-    const newState = {
-      ...backupStateStore.load(),
-      lastBackupDate: new Date().toISOString(),
-      lastExportedCount: summary.exported + summary.updated,
-      lastSummary: {
-        processed: summary.processed,
-        exported: summary.exported,
-        updated: summary.updated,
-        skipped: summary.skipped,
-      },
-      outcome: 'succeeded',
-      lastBackupErrorMessage: null,
-    }
-    backupStateStore.save(newState)
-    notificationService.postSuccess(summary)
-    mainWindow?.webContents.send('backup-done', { success: true, summary })
+    if (!dryRun) {
+      const newState = {
+        ...backupStateStore.load(),
+        lastBackupDate: new Date().toISOString(),
+        lastExportedCount: summary.exported + summary.updated,
+        lastSummary: {
+          processed: summary.processed,
+          exported: summary.exported,
+          updated: summary.updated,
+          skipped: summary.skipped,
+        },
+        outcome: 'succeeded',
+        lastBackupErrorMessage: null,
+      }
+      backupStateStore.save(newState)
+      notificationService.postSuccess(summary)
 
-    // Refresh library status after successful backup
-    if (settings.pythonPath && settings.photosLibraryPath) {
-      LibraryStatusService.query(settings, newState.lastBackupDate, fromDate)
-        .then((status) => mainWindow?.webContents.send('library-status-updated', status))
-        .catch(() => {})
+      // Refresh library status after successful backup
+      if (settings.pythonPath && settings.photosLibraryPath) {
+        LibraryStatusService.query(settings, newState.lastBackupDate, fromDate)
+          .then((status) => mainWindow?.webContents.send('library-status-updated', status))
+          .catch(() => {})
+      }
     }
+
+    mainWindow?.webContents.send('backup-done', { success: true, summary, dryRun })
   } catch (err) {
     const interrupted = err.message === 'CANCELLED'
-    backupStateStore.save({
-      ...backupStateStore.load(),
-      outcome: interrupted ? 'interrupted' : 'failed',
-      lastBackupErrorMessage: interrupted ? null : err.message,
-    })
-    if (interrupted) notificationService.postInterrupted()
-    else notificationService.postFailure(err.message)
-    mainWindow?.webContents.send('backup-done', { success: false, interrupted, error: err.message })
+    if (!dryRun) {
+      backupStateStore.save({
+        ...backupStateStore.load(),
+        outcome: interrupted ? 'interrupted' : 'failed',
+        lastBackupErrorMessage: interrupted ? null : err.message,
+      })
+      if (interrupted) notificationService.postInterrupted()
+      else notificationService.postFailure(err.message)
+    }
+    mainWindow?.webContents.send('backup-done', { success: false, interrupted, error: err.message, dryRun })
   }
 })
 

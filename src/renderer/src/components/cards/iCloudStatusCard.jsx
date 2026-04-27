@@ -1,7 +1,7 @@
 import CardFrame from '../CardFrame.jsx'
 
 export default function iCloudStatusCard({ libraryStatus }) {
-  const toDownload = libraryStatus?.pending_missing_count ?? null
+  const toDownload = libraryStatus?.missing_count ?? null
 
   const dotColor = toDownload == null ? 'gray' : toDownload === 0 ? 'green' : 'yellow'
 

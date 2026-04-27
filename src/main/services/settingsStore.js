@@ -7,6 +7,7 @@ const DEFAULTS = {
   osxphotosPath: '',
   pythonPath: '',
   photosLibraryPath: '',
+  disableDownloadMissing: false,  // override: skip iCloud downloads (use when local storage can't accommodate)
   fromDatePreset: 'all',   // 'all' | '1yr' | '2yr' | '5yr' | 'custom'
   fromDateCustom: '',       // YYYY-MM-DD when preset is 'custom'
 }

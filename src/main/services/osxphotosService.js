@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, appendFileSync, unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -70,15 +70,19 @@ export class OsxphotosService {
   }
 
   async runExport(settings, onLine) {
-    const { osxphotosPath, destinationPath, photosLibraryPath, fromDate } = settings
+    const { osxphotosPath, destinationPath, photosLibraryPath, fromDate, dryRun = false, disableDownloadMissing = false } = settings
 
     // Capture start time for log filename and header
     const startTime = Date.now()
     const startDate = new Date(startTime)
-    const startTag = startDate.toISOString().replace('T', '_').replace(/:/g, '-').slice(0, 19) // 2026-04-23_08-43-49
-    const startIso = startDate.toISOString().replace('T', ' ').slice(0, 19)                   // 2026-04-23 08:43:49
+    const p = (n) => String(n).padStart(2, '0')
+    const Y = startDate.getFullYear(), M = p(startDate.getMonth() + 1), D = p(startDate.getDate())
+    const h = p(startDate.getHours()), m = p(startDate.getMinutes()), s = p(startDate.getSeconds())
+    const startTag = `${Y}-${M}-${D}_${h}-${m}-${s}` // 2026-04-23_08-43-49 (local time)
+    const startIso = `${Y}-${M}-${D} ${h}:${m}:${s}` // 2026-04-23 08:43:49 (local time)
 
     const reportPath = join(tmpdir(), `osxphotos_report_${Date.now()}.json`)
+    const logPath = dryRun ? null : join(destinationPath, `osxphotos_backup_${startTag}.log`)
 
     const args = [
       'export', destinationPath,
@@ -88,22 +92,46 @@ export class OsxphotosService {
       '--export-aae',
       '--sidecar', 'xmp',
       '--touch-file',
-      '--filename', 'IMG_{created.date}_{created.hour}-{created.min}-{created.sec}_{id:06d}',
+      '--filename', 'IMG_{created.date}_{created.hour}-{created.min}-{created.sec}_{uuid|chop(28)}',
       '--directory', '{created.year}',
       '--report', reportPath,
       '--no-progress',
       '--verbose',
     ]
     if (fromDate) args.push('--from-date', fromDate)
-    args.push('--download-missing', '--retry', '3')
+    if (!disableDownloadMissing) args.push('--download-missing', '--retry', '3')
+    if (dryRun) args.push('--dry-run')
 
     this._cancelled = false
 
-    // Batch log lines: flush every 100ms or 50 lines
+    // Write log header immediately so the file exists and is searchable from the start
+    if (logPath) {
+      try {
+        writeFileSync(logPath, [
+          'OSXPhotos Backup Log',
+          '====================',
+          `Started:     ${startIso}`,
+          `Library:     ${photosLibraryPath ?? '(unknown)'}`,
+          `Destination: ${destinationPath}`,
+          `From date:   ${fromDate ?? 'all time'}`,
+          '',
+          '--- osxphotos output ---',
+          '',
+        ].join('\n'))
+      } catch { /* don't fail if header write fails */ }
+    }
+
+    // Batch log lines: flush every 100ms or 50 lines (UI and log file together)
     let batch = []
     let batchTimer = null
     const flush = () => {
-      if (batch.length) { onLine([...batch]); batch = [] }
+      if (batch.length) {
+        onLine([...batch])
+        if (logPath) {
+          try { appendFileSync(logPath, batch.join('\n') + '\n') } catch {}
+        }
+        batch = []
+      }
       batchTimer = null
     }
     const queue = (line) => {
@@ -112,7 +140,7 @@ export class OsxphotosService {
       else if (!batchTimer) batchTimer = setTimeout(flush, 100)
     }
 
-    const allLines = []
+    const allLines = [] // retained for parseSummaryLine at end
 
     return new Promise((resolve, reject) => {
       this._proc = spawn(osxphotosPath, args)
@@ -148,16 +176,9 @@ export class OsxphotosService {
         const ss = String(elapsedSec % 60).padStart(2, '0')
         const elapsed = `${hh}:${mm}:${ss}`
 
-        const writeLog = (outcome, summary) => {
+        const appendFooter = (outcome, summary) => {
+          if (!logPath) return
           try {
-            const header = [
-              'OSXPhotos Backup Log',
-              '====================',
-              `Started:     ${startIso}`,
-              `Library:     ${photosLibraryPath ?? '(unknown)'}`,
-              `Destination: ${destinationPath}`,
-              `From date:   ${fromDate ?? 'all time'}`,
-            ]
             const foot = [
               '',
               '--- Summary ---',
@@ -170,15 +191,14 @@ export class OsxphotosService {
               ] : []),
               `Outcome:     ${outcome}`,
               `Elapsed:     ${elapsed}`,
+              '',
             ]
-            const body = ['', '--- osxphotos output ---', ...allLines]
-            const content = [...header, ...body, ...foot].join('\n') + '\n'
-            writeFileSync(join(destinationPath, `osxphotos_backup_${startTag}.log`), content)
-          } catch { /* don't fail the backup if log write fails */ }
+            appendFileSync(logPath, foot.join('\n'))
+          } catch { /* don't fail the backup if footer write fails */ }
         }
 
         if (this._cancelled) {
-          writeLog('stopped', null)
+          appendFooter('stopped', null)
           try { if (existsSync(reportPath)) unlinkSync(reportPath) } catch { /* ok */ }
           return reject(new Error('CANCELLED'))
         }
@@ -192,11 +212,11 @@ export class OsxphotosService {
         try { if (existsSync(reportPath)) unlinkSync(reportPath) } catch { /* ok */ }
 
         if (code !== 0 && !summary.processed) {
-          writeLog('failed', null)
+          appendFooter('failed', null)
           return reject(new Error(`osxphotos exited with code ${code}`))
         }
 
-        writeLog('succeeded', summary)
+        appendFooter('succeeded', summary)
         resolve(summary)
       })
 

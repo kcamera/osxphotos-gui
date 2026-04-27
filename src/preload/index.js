@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   refresh: () => ipcRenderer.invoke('refresh'),
 
   // Backup lifecycle
-  startBackup: () => ipcRenderer.invoke('start-backup'),
+  startBackup: (opts) => ipcRenderer.invoke('start-backup', opts),
   cancelBackup: () => ipcRenderer.invoke('cancel-backup'),
 
   // Streaming events — return cleanup functions

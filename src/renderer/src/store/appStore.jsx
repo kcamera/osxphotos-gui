@@ -7,6 +7,7 @@ export function AppProvider({ children }) {
   const [backupState, setBackupState] = useState(null)
   const [destStatus, setDestStatus] = useState({ status: 'checking' })
   const [libraryStatus, setLibraryStatus] = useState(null)
+  const [exportedCount, setExportedCount] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [backupPhase, setBackupPhase] = useState('idle') // idle | running | done
@@ -18,6 +19,7 @@ export function AppProvider({ children }) {
     setBackupState(data.backupState)
     setDestStatus(data.destStatus)
     if (data.libraryStatus) setLibraryStatus(data.libraryStatus)
+    setExportedCount(data.exportedCount ?? null)
     setIsLoading(false)
   }, [])
 
@@ -60,6 +62,7 @@ export function AppProvider({ children }) {
       backupState, updateBackupState,
       destStatus,
       libraryStatus,
+      exportedCount,
       isLoading,
       isRefreshing,
       backupPhase, setBackupPhase,

@@ -139,6 +139,19 @@ export default function SettingsView({ onClose }) {
           </div>
         )}
 
+        {/* Download missing override */}
+        <div className="toggle-row">
+          <div>
+            <div className="toggle-label">Skip iCloud Downloads</div>
+            <div className="toggle-desc">Normally, cloud-only originals are fetched from iCloud before export. Enable this override temporarily when local storage can't accommodate downloads — for example, after switching to Optimize Mac Storage while the export database resyncs.</div>
+          </div>
+          <label className="toggle-switch">
+            <input type="checkbox" checked={form.disableDownloadMissing ?? false} onChange={(e) => setForm((f) => ({ ...f, disableDownloadMissing: e.target.checked }))} />
+            <span className="toggle-track" />
+            <span className="toggle-thumb" />
+          </label>
+        </div>
+
         <button className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? 'Saving…' : 'Save Settings'}
         </button>

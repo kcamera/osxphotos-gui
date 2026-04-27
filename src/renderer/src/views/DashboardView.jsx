@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore.jsx'
 import LastBackupCard from '../components/cards/LastBackupCard.jsx'
 import PendingCard from '../components/cards/PendingCard.jsx'
 import DestinationCard from '../components/cards/DestinationCard.jsx'
-import ICloudStatusCard from '../components/cards/iCloudStatusCard.jsx'
+import BackupCoverageCard from '../components/cards/BackupCoverageCard.jsx'
 import BackupProgressView from '../components/BackupProgressView.jsx'
 
 function disabledReason(destStatus, settings, backupPhase) {
@@ -25,16 +25,20 @@ const PRESETS = [
 ]
 
 export default function DashboardView({ onOpenSettings }) {
-  const { settings, backupState, destStatus, libraryStatus, isRefreshing, backupPhase, setBackupPhase, updateSettings, refresh } = useAppStore()
+  const { settings, backupState, destStatus, libraryStatus, exportedCount, isRefreshing, backupPhase, setBackupPhase, updateSettings, refresh } = useAppStore()
   const [showProgress, setShowProgress] = useState(false)
+  const [isDryRun, setIsDryRun] = useState(false)
+  const [backupStartTime, setBackupStartTime] = useState(null)
 
   const reason = disabledReason(destStatus, settings, backupPhase)
   const canBackup = !reason
 
-  const handleBackup = async () => {
+  const handleBackup = async (dryRun = false) => {
+    setIsDryRun(dryRun)
+    setBackupStartTime(Date.now())
     setShowProgress(true)
     setBackupPhase('running')
-    await window.api.startBackup()
+    await window.api.startBackup({ dryRun })
     setBackupPhase('idle')
   }
 
@@ -81,7 +85,7 @@ export default function DashboardView({ onOpenSettings }) {
           <LastBackupCard backupState={backupState} />
           <PendingCard backupState={backupState} libraryStatus={libraryStatus} isRefreshing={isRefreshing} />
           <DestinationCard destStatus={destStatus} settings={settings} />
-          <ICloudStatusCard libraryStatus={libraryStatus} />
+          <BackupCoverageCard exportedCount={exportedCount} libraryStatus={libraryStatus} />
         </div>
 
         {/* Date range filter */}
@@ -111,17 +115,24 @@ export default function DashboardView({ onOpenSettings }) {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
           <button
             className="btn btn-primary btn-large"
-            onClick={handleBackup}
+            onClick={() => handleBackup(false)}
             disabled={!canBackup}
           >
-            {backupPhase === 'running' ? <><span className="spinner" /> Backing up…</> : 'Back Up Now'}
+            {backupPhase === 'running' && !isDryRun ? <><span className="spinner" /> Backing up…</> : 'Back Up Now'}
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleBackup(true)}
+            disabled={!canBackup}
+          >
+            {backupPhase === 'running' && isDryRun ? <><span className="spinner" /> Previewing…</> : 'Preview Changes'}
           </button>
           {reason && <span className="muted">{reason}</span>}
           {isRefreshing && !reason && <span className="muted">Refreshing status…</span>}
         </div>
       </div>
 
-      {showProgress && <BackupProgressView onDone={handleProgressDone} />}
+      {showProgress && <BackupProgressView onDone={handleProgressDone} isDryRun={isDryRun} startTime={backupStartTime} />}
     </div>
   )
 }
