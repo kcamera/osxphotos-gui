@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Electron build artifacts
+*.app
+*.dmg
+*.pkg
+*.zip
+
+# Editor
+.vscode/
+.idea/
